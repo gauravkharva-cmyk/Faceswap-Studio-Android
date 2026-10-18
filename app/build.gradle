@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.gauravkharva.faceswapstudio'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.gauravkharva.faceswapstudio'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Bundled ML Kit face model; no cloud API key or upload required.
+    implementation 'com.google.mlkit:face-detection:16.1.7'
+}
