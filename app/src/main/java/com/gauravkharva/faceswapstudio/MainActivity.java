@@ -40,8 +40,7 @@ import java.util.concurrent.Executors;
 
 /**
  * Consent-based, entirely local face swapping between two photographs.
- * The ML Kit model detects face geometry, and Android Graphics warps/blends pixels.
- * This is image editing, not a generative video/deepfake model.
+ * Version 1.1 focuses on more realistic results and rejects poor input pairs.
  */
 public class MainActivity extends Activity {
     private static final int PICK_SOURCE = 101;
@@ -88,13 +87,15 @@ public class MainActivity extends Activity {
 
         TextView icon = label("✦  FACE SWAP STUDIO", 13, PRIMARY, true);
         root.addView(icon);
-        TextView heading = label("Create a new face-swap photo", 27, TEXT, true);
+        TextView heading = label("Create a more realistic face-swap photo", 26, TEXT, true);
         heading.setPadding(0, dp(10), 0, dp(7));
         root.addView(heading);
-        TextView sub = label("Private on-device editing · AI face detection · PNG export", 13, MUTED, false);
+        TextView sub = label("Private on-device editing · Improved blend engine · PNG export", 13, MUTED, false);
         root.addView(sub);
 
-        TextView how = label("Choose the face to copy and the photo to edit. Works best with front-facing, well-lit portraits.", 14, TEXT, false);
+        TextView how = label(
+                "Choose the face to copy and the photo to edit. Best results come from front-facing portraits with similar angle, lighting, and age.",
+                14, TEXT, false);
         how.setPadding(dp(14), dp(14), dp(14), dp(14));
         how.setBackground(round(CARD, 16));
         LinearLayout.LayoutParams howParams = new LinearLayout.LayoutParams(-1, -2);
@@ -129,8 +130,7 @@ public class MainActivity extends Activity {
         consent.setTextColor(TEXT);
         consent.setTextSize(13);
         consent.setButtonTintList(android.content.res.ColorStateList.valueOf(PRIMARY));
-        LinearLayout.LayoutParams consentParams = fullWidthWithTop(17);
-        root.addView(consent, consentParams);
+        root.addView(consent, fullWidthWithTop(17));
 
         swapButton = actionButton("✦  Swap Face", true);
         swapButton.setOnClickListener(v -> runFaceSwap());
@@ -165,7 +165,9 @@ public class MainActivity extends Activity {
         saveButton.setOnClickListener(v -> saveResult());
         root.addView(saveButton, fullWidthWithTop(16));
 
-        TextView note = label("Every exported image is marked “AI EDITED • FACE SWAP”. Photos never leave this phone.\n\nDeveloped By : Gaurav Kharva", 12, MUTED, false);
+        TextView note = label(
+                "Every exported image is marked “AI EDITED • FACE SWAP”. Photos never leave this phone.\n\nDeveloped By : Gaurav Kharva",
+                12, MUTED, false);
         note.setGravity(Gravity.CENTER_HORIZONTAL);
         root.addView(note, fullWidthWithTop(19));
         updateButtons();
@@ -384,7 +386,12 @@ public class MainActivity extends Activity {
                             setBusy(false, "No face found in the target photo. Try a clearer portrait.");
                             return;
                         }
-                        status.setText("Aligning and blending faces…");
+                        String pairIssue = compatibilityIssue(sourceFace, targetFace);
+                        if (pairIssue != null) {
+                            setBusy(false, pairIssue);
+                            return;
+                        }
+                        status.setText("Aligning, correcting color, and blending faces…");
                         Bitmap originalSource = sourceBitmap;
                         Bitmap originalTarget = targetBitmap;
                         worker.execute(() -> {
@@ -409,6 +416,26 @@ public class MainActivity extends Activity {
             detector.close();
             setBusy(false, "Source face detection failed: " + readable(error));
         });
+    }
+
+    private String compatibilityIssue(Face sourceFace, Face targetFace) {
+        Rect src = sourceFace.getBoundingBox();
+        Rect dst = targetFace.getBoundingBox();
+        if (Math.min(src.width(), src.height()) < 120) {
+            return "Source face is too small for a realistic swap. Use a closer portrait.";
+        }
+        if (Math.min(dst.width(), dst.height()) < 120) {
+            return "Target face is too small for a realistic swap. Use a closer portrait.";
+        }
+        float yawGap = Math.abs(sourceFace.getHeadEulerAngleY() - targetFace.getHeadEulerAngleY());
+        if (yawGap > 18f) {
+            return "Photos are facing different directions. Use portraits with a more similar side angle.";
+        }
+        float rollGap = Math.abs(sourceFace.getHeadEulerAngleZ() - targetFace.getHeadEulerAngleZ());
+        if (rollGap > 16f) {
+            return "Head tilt differs too much. Use photos with a more similar tilt.";
+        }
+        return null;
     }
 
     private Face biggestFace(List<Face> faces) {
