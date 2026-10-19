@@ -1,0 +1,53 @@
+name: Publish Virtual Try-On AI APK
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-virtual-tryon.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: virtual-tryon-v1.0
+      SOURCE_RUN_ID: "39187715946"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download verified APK build artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "VirtualTryOnAI-APK" --dir output
+          test -s output/app-debug.apk
+          mv output/app-debug.apk output/VirtualTryOnAI-v1.0.apk
+
+      - name: Verify APK archive
+        run: |
+          set -euo pipefail
+          unzip -tq output/VirtualTryOnAI-v1.0.apk > /dev/null
+          unzip -Z1 output/VirtualTryOnAI-v1.0.apk | grep -Fx 'AndroidManifest.xml'
+          unzip -Z1 output/VirtualTryOnAI-v1.0.apk | grep -Fx 'classes.dex'
+          sha256sum output/VirtualTryOnAI-v1.0.apk
+
+      - name: Publish permanent GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" output/VirtualTryOnAI-v1.0.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" output/VirtualTryOnAI-v1.0.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target e05fe802fa30aa2ade561ab053170592384432e3 \
+              --title "Virtual Try-On AI v1.0 - Clothing Editor" \
+              --notes "A standalone Android virtual clothing try-on client. Requires a user-supplied FASHN API key and provider credits for neural outfit generation. Photos are uploaded to FASHN only after explicit confirmation. Cloud AI, not offline generation. Conservative garment content moderation; no nudification. AI-styled watermark on exports. Developed By: Gaurav Kharva. Built by GitHub Actions run 39187715946."
+          fi
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
