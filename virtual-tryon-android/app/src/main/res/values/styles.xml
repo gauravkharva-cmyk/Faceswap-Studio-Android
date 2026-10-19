@@ -1,0 +1,10 @@
+<resources>
+  <style name="Theme.VirtualTryOn" parent="android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:colorAccent">#695FF7</item>
+    <item name="android:navigationBarColor">#111426</item>
+    <item name="android:statusBarColor">#111426</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowActionModeOverlay">true</item>
+  </style>
+</resources>
