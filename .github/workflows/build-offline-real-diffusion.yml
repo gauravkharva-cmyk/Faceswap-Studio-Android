@@ -34,6 +34,7 @@ jobs:
         run: |
           python3 offline-diffusion/patch_app.py
           python3 offline-diffusion/add-model-setup.py
+          python3 offline-diffusion/add-engine-diagnostics.py
 
       - name: Set up Java
         uses: actions/setup-java@v4
