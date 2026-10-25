@@ -10,8 +10,18 @@ build=root/"app/build.gradle.kts"
 s=build.read_text()
 assert 'applicationId = "local.kleine.sdcpp"' in s
 s=s.replace('applicationId = "local.kleine.sdcpp"', 'applicationId = "com.openphoto.offlinereal"')
-s=s.replace('versionCode = 1','versionCode = 2')
-s=s.replace('versionName = "1.0"','versionName = "1.1-offline"')
+s=s.replace('versionCode = 1','versionCode = 3')
+s=s.replace('versionName = "1.0"','versionName = "1.2-offline-fix"')
+# Native shared-executable binaries must be extracted, not executed inside APK ZIP.
+anchor='    namespace = "local.kleine.sdcpp"'
+assert anchor in s
+s=s.replace(anchor, anchor + '''
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+''')
 build.write_text(s)
 
 strings=root/"app/src/main/res/values/strings.xml"
@@ -33,6 +43,18 @@ manifest=root/"app/src/main/AndroidManifest.xml"
 m=manifest.read_text()
 assert "android.permission.INTERNET" not in m
 manifest.write_text(m)
+
+# Make the app report useful native-library diagnostics instead of a vague
+# "library not found" message; always use the bundled arm64 CPU engine.
+activity=root/"app/src/main/java/local/kleine/sdcpp/SDActivity.java"
+a=activity.read_text()
+a=a.replace('cpuchecker.setChecked(!canUseOpenCL);','cpuchecker.setChecked(true);')
+a=a.replace('cpuchecker.setEnabled(canUseOpenCL);','cpuchecker.setEnabled(false);')
+old_message='sdFileName + " not found,\\nplease rebuild this app"'
+new_message='sdFileName + " missing from installed native libraries.\\nCPU: " + java.util.Arrays.toString(android.os.Build.SUPPORTED_ABIS) + "\\nPath: " + nativeLibDir.getAbsolutePath() + "\\nTry uninstalling the previous version and reinstalling the fixed APK."'
+assert old_message in a, "Upstream error message changed"
+a=a.replace(old_message,new_message)
+activity.write_text(a)
 
 notice=root/"app/src/main/assets/THIRD_PARTY_NOTICE.txt"
 notice.parent.mkdir(parents=True,exist_ok=True)
