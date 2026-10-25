@@ -1,0 +1,60 @@
+name: Build Open Photo Studio APK
+on:
+  push:
+    branches: [ai-photo-studio]
+    paths:
+      - 'photo-studio-source.b64'
+      - '.github/workflows/build-open-photo-studio.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'photo-studio-source.b64'
+      - '.github/workflows/build-open-photo-studio.yml'
+  workflow_dispatch:
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Restore Open Photo Studio source
+        run: |
+          base64 --decode photo-studio-source.b64 > photo-studio-source.tar.gz
+          tar -xzf photo-studio-source.tar.gz
+          if [ -d OpenPhotoStudio_v2 ]; then mv OpenPhotoStudio_v2 OpenPhotoStudio; fi
+          test -f OpenPhotoStudio/app/src/main/java/com/openphotostudio/app/HordeClient.java
+          test -f OpenPhotoStudio/settings.gradle
+      - name: Set free guest server as default
+        run: python3 free-guest-mode-patch.py
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Use GitHub runner Android SDK
+        shell: bash
+        run: |
+          set -eux
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          test -d "${ANDROID_HOME}"
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile Android app
+        run: gradle --no-daemon --project-dir OpenPhotoStudio :app:assembleDebug
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPhotoStudio-APK
+          path: OpenPhotoStudio/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error
