@@ -10,8 +10,8 @@ build=root/"app/build.gradle.kts"
 s=build.read_text()
 assert 'applicationId = "local.kleine.sdcpp"' in s
 s=s.replace('applicationId = "local.kleine.sdcpp"', 'applicationId = "com.openphoto.offlinereal"')
-s=s.replace('versionCode = 1','versionCode = 3')
-s=s.replace('versionName = "1.0"','versionName = "1.2-offline-fix"')
+s=s.replace('versionCode = 1','versionCode = 4')
+s=s.replace('versionName = "1.0"','versionName = "1.3-diagnostic"')
 # Native shared-executable binaries must be extracted, not executed inside APK ZIP.
 anchor='    namespace = "local.kleine.sdcpp"'
 assert anchor in s
