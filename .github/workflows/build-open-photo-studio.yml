@@ -5,6 +5,11 @@ on:
     paths:
       - 'photo-studio-source.b64'
       - '.github/workflows/build-open-photo-studio.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'photo-studio-source.b64'
+      - '.github/workflows/build-open-photo-studio.yml'
   workflow_dispatch:
 
 jobs:
