@@ -24,6 +24,8 @@ jobs:
         run: |
           base64 --decode photo-studio-source.b64 > photo-studio-source.tar.gz
           tar -xzf photo-studio-source.tar.gz
+          if [ -d OpenPhotoStudio_v2 ]; then mv OpenPhotoStudio_v2 OpenPhotoStudio; fi
+          test -f OpenPhotoStudio/app/src/main/java/com/openphotostudio/app/HordeClient.java
           test -f OpenPhotoStudio/settings.gradle
       - name: Java 17
         uses: actions/setup-java@v4
