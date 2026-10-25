@@ -28,6 +28,8 @@ jobs:
           test -f OfflinePhotoLab/settings.gradle
           test -f OfflinePhotoLab/app/src/main/java/com/openphotolab/MainActivity.java
           test -f OfflinePhotoLab/app/src/main/java/com/openphotolab/ProceduralGenerator.java
+          # Patch a standard Android Button API call for the platform SDK
+          sed -i 's/b.setTextAllCaps(false);//g' OfflinePhotoLab/app/src/main/java/com/openphotolab/MainActivity.java
           if grep -Eq '<uses-permission[^>]*INTERNET' OfflinePhotoLab/app/src/main/AndroidManifest.xml; then
             echo 'Unexpected INTERNET permission' >&2
             exit 1
