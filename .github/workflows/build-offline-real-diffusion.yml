@@ -1,0 +1,85 @@
+name: Offline Real Photo Studio - Native AI APK
+on:
+  push:
+    branches: [offline-real-diffusion]
+    paths:
+      - '.github/workflows/build-offline-real-diffusion.yml'
+      - 'offline-diffusion/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-offline-real-diffusion.yml'
+      - 'offline-diffusion/**'
+  workflow_dispatch:
+
+jobs:
+  build-native-offline-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout custom offline build script
+        uses: actions/checkout@v4
+
+      - name: Retrieve real Stable Diffusion Android engine (MIT)
+        run: |
+          git clone https://github.com/akleine/sdcpp-on-android.git sdapp
+          git -C sdapp checkout 4e8166ecc27b074535228e131425aa89690cd913
+          find sdapp/app/src/main/jniLibs -name '*.so' -printf '%p %s bytes\n' | head -30
+          test -f sdapp/app/src/main/jniLibs/arm64-v8a/libsd.so
+          test -f sdapp/LICENSE
+
+      - name: Personalize and enforce offline-only
+        run: |
+          python3 offline-diffusion/patch_app.py
+          python3 offline-diffusion/add-model-setup.py
+          python3 offline-diffusion/add-engine-diagnostics.py
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -eux
+          test -d "$ANDROID_HOME"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build offline APK
+        working-directory: sdapp
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Verify native inference and lack of internet permission
+        shell: bash
+        run: |
+          set -eux
+          APK=sdapp/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libsd.so'
+          unzip -l "$APK" | grep 'classes.dex'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" > offline-diffusion/apk-permissions.txt
+          if grep -q 'android.permission.INTERNET' offline-diffusion/apk-permissions.txt; then
+            echo "FAIL - APK unexpectedly requests INTERNET permission"; exit 1
+          fi
+          cp "$APK" OfflineRealPhotoStudio.apk
+          sha256sum OfflineRealPhotoStudio.apk > offline-diffusion/apk-sha256.txt
+          ls -lh OfflineRealPhotoStudio.apk
+
+      - name: Deliver installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OfflineRealPhotoStudio-APK
+          path: |
+            OfflineRealPhotoStudio.apk
+            offline-diffusion/apk-permissions.txt
+            offline-diffusion/apk-sha256.txt
+          retention-days: 30
+          if-no-files-found: error
