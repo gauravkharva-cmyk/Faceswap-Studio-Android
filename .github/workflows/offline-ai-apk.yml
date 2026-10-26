@@ -27,10 +27,10 @@ jobs:
       - name: Android tools for native GGUF inference
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          which sdkmanager
-          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f -print -quit)
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
 
       - name: Fetch official llama.cpp Android app with local AI inference
         shell: bash
