@@ -1,0 +1,91 @@
+name: Offline AI APK (fully local)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - offline-ai-apk-build
+    paths:
+      - ".github/workflows/offline-ai-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-offline-ai:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Android tools for native GGUF inference
+        shell: bash
+        run: |
+          sdkmanager --licenses < /dev/null >/dev/null 2>&1 || true
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+
+      - name: Fetch official llama.cpp Android app with local AI inference
+        shell: bash
+        run: |
+          git clone --no-checkout https://github.com/ggml-org/llama.cpp.git offline-engine
+          git -C offline-engine fetch --depth 1 origin a4699400e3ccca756297ef4433eb1d7998fca525
+          git -C offline-engine checkout --detach FETCH_HEAD
+          test -e offline-engine/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+
+      - name: Make branded offline chat APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("offline-engine/examples/llama.android")
+          strings = root / "app/src/main/res/values/strings.xml"
+          s = strings.read_text()
+          s = s.replace("AiChat", "Offline AI - Gaurav Kharva").replace("Llama Android", "Offline AI - Gaurav Kharva")
+          strings.write_text(s)
+          manifest = (root / "app/src/main/AndroidManifest.xml").read_text()
+          assert 'android.permission.INTERNET' not in manifest, "Unexpected internet permission in upstream app"
+          appbuild = root / "app/build.gradle.kts"
+          b = appbuild.read_text().replace('applicationId = "com.example.llama.aichat"', 'applicationId = "com.gauravkharva.offlineai"')
+          appbuild.write_text(b)
+          print("Offline APK source prepared. No API tokens or networking permissions.")
+          PY
+
+      - name: Compile Android debug APK
+        working-directory: offline-engine/examples/llama.android
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify no INTERNET permission and native libraries
+        shell: bash
+        run: |
+          APK=offline-engine/examples/llama.android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions "$APK" | tee /tmp/offline-permissions.txt
+          if grep -q 'android.permission.INTERNET' /tmp/offline-permissions.txt; then
+            echo "::error::APK is not fully offline: INTERNET permission exists"
+            exit 1
+          fi
+          unzip -l "$APK" | grep 'lib/arm64-v8a/.*\\.so' || {
+            echo "::error::Native AI engine missing from APK"
+            exit 1
+          }
+          cp "$APK" OfflineAI-GauravKharva-debug.apk
+
+      - name: Upload APK for Android install
+        uses: actions/upload-artifact@v4
+        with:
+          name: OfflineAI-GauravKharva-APK
+          path: OfflineAI-GauravKharva-debug.apk
+          if-no-files-found: error
+          retention-days: 30
