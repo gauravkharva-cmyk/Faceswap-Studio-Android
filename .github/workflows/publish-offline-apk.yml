@@ -1,0 +1,35 @@
+name: Publish direct Offline AI APK
+on:
+  push:
+    branches: [offline-ai-apk-build]
+    paths: ['.github/workflows/publish-offline-apk.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch verified compiled APK
+        uses: actions/download-artifact@v4
+        with:
+          name: OfflineAI-GauravKharva-APK
+          run-id: 40355729546
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: downloads
+      - name: Verify APK archive
+        run: |
+          APK=downloads/OfflineAI-GauravKharva-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" > /dev/null
+          unzip -Z1 "$APK" | grep '^AndroidManifest.xml$'
+          sha256sum "$APK"
+      - name: Publish direct APK on isolated branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f downloads/OfflineAI-GauravKharva-debug.apk
+          git commit -m 'Publish installable offline AI APK for direct download'
+          git push origin HEAD:offline-ai-apk-build
