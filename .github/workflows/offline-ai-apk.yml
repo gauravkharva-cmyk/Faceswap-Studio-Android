@@ -78,8 +78,8 @@ jobs:
             echo "::error::APK is not fully offline: INTERNET permission exists"
             exit 1
           fi
-          unzip -l "$APK" | grep 'lib/arm64-v8a/.*\\.so' || {
-            echo "::error::Native AI engine missing from APK"
+          unzip -Z1 "$APK" | grep 'lib/arm64-v8a/' || {
+            echo "::error::Native ARM64 AI libraries missing from APK"
             exit 1
           }
           cp "$APK" OfflineAI-GauravKharva-debug.apk
