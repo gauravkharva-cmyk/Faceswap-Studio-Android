@@ -8,7 +8,7 @@ on:
       - ".github/workflows/offline-ai-apk.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   assemble-offline-ai:
@@ -80,6 +80,18 @@ jobs:
             exit 1
           }
           cp "$APK" OfflineAI-GauravKharva-debug.apk
+
+      - name: Publish installable APK to isolated branch (direct download)
+        shell: bash
+        continue-on-error: true
+        run: |
+          mkdir -p downloads
+          cp OfflineAI-GauravKharva-debug.apk downloads/OfflineAI-GauravKharva-debug.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/OfflineAI-GauravKharva-debug.apk
+          git commit -m "Publish offline AI installable APK"
+          git push origin HEAD:offline-ai-apk-build
 
       - name: Upload APK for Android install
         uses: actions/upload-artifact@v4
