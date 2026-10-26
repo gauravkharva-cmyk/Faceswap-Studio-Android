@@ -55,6 +55,9 @@ jobs:
           appbuild = root / "app/build.gradle.kts"
           b = appbuild.read_text().replace('applicationId = "com.example.llama.aichat"', 'applicationId = "com.gauravkharva.offlineai"')
           appbuild.write_text(b)
+          libbuild = root / "lib/build.gradle.kts"
+          lb = libbuild.read_text().replace('abiFilters += listOf("arm64-v8a", "x86_64")', 'abiFilters += listOf("arm64-v8a")').replace('"-DGGML_CPU_ALL_VARIANTS=ON"', '"-DGGML_CPU_ALL_VARIANTS=OFF"')
+          libbuild.write_text(lb)
           print("Offline APK source prepared. No API tokens or networking permissions.")
           PY
 
