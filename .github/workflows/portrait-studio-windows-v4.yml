@@ -1,0 +1,59 @@
+name: Build Portrait Studio V4 Realistic Vision Windows EXE
+on:
+  push:
+    branches:
+      - portrait-studio-windows-exe-build
+    paths:
+      - 'windows-portrait/source-v4.b64'
+      - '.github/workflows/portrait-studio-windows-v4.yml'
+  workflow_dispatch:
+jobs:
+  build-v4-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out isolated branch
+        uses: actions/checkout@v4
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Unpack V4 source
+        shell: pwsh
+        run: |
+          $b64 = (Get-Content 'windows-portrait/source-v4.b64' -Raw).Trim()
+          [IO.File]::WriteAllBytes('portrait_v4.zip', [Convert]::FromBase64String($b64))
+          Expand-Archive -Path 'portrait_v4.zip' -DestinationPath 'v4' -Force
+      - name: Install UI dependencies
+        shell: pwsh
+        working-directory: v4
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-desktop.txt pyinstaller
+      - name: Run 20 unit tests
+        working-directory: v4
+        run: python -m unittest discover -s tests -v
+      - name: Smoke-test Windows GUI without running AI
+        working-directory: v4
+        run: python -c "from app import PortraitStudio; r=PortraitStudio(); r.update(); r.destroy(); print('Windows GUI boot OK')"
+      - name: Build desktop EXE
+        working-directory: v4
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PortraitStudio-V4 app.py
+      - name: Assemble package (NO model files or old state deleted)
+        shell: pwsh
+        working-directory: v4
+        run: |
+          New-Item -ItemType Directory -Force -Path 'package','package/scripts','package/models','package/outputs' | Out-Null
+          Copy-Item 'dist/PortraitStudio-V4.exe' 'package/'
+          Copy-Item 'generator_worker.py','safety.py','framing.py','model_options.py','requirements-ai.txt','README.md' 'package/'
+          Copy-Item 'scripts/download_model.py','scripts/download_realistic_vision_v6.py','scripts/install_realistic_vision_v6_windows.bat','scripts/repair_ai_cpu_windows.bat','scripts/setup_ai_windows.bat' 'package/scripts/'
+          New-Item -ItemType File -Force -Path 'package/models/KEEP_EXISTING_MODELS.txt','package/outputs/.keep' | Out-Null
+          if (!(Test-Path 'package/PortraitStudio-V4.exe')) { throw 'Missing EXE' }
+      - name: Upload user-downloadable Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PortraitStudio-V4-RealisticVision-Windows
+          path: v4/package/
+          if-no-files-found: error
+          retention-days: 30
