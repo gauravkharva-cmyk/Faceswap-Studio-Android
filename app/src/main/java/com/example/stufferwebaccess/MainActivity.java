@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setBackgroundColor(Color.rgb(31,42,60));
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        for (String name : new String[]{"Back","Upload Photo","Save Image","Refresh","Browser"}) {
+        for (String name : new String[]{"Back","Reference Photo","Save Image","Refresh","Browser"}) {
             Button b = new Button(this);
             b.setText(name);
             b.setTextSize(10);
@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
             if (name.equals("Back")) b.setOnClickListener(v -> {
                 if (web.canGoBack()) web.goBack(); else web.loadUrl(HOME);
             });
-            if (name.equals("Upload Photo")) b.setOnClickListener(v -> showImageInputs());
+            if (name.equals("Reference Photo")) b.setOnClickListener(v -> showReferencePhotoHelp());
             if (name.equals("Save Image")) b.setOnClickListener(v -> saveLargestOrScreenshot());
             if (name.equals("Refresh")) b.setOnClickListener(v -> web.reload());
             if (name.equals("Browser")) b.setOnClickListener(v ->
@@ -189,54 +189,59 @@ public class MainActivity extends Activity {
     }
 
 
-    // User-initiated convenience control. Only finds image-input controls for
-    // generation/editing, never the site's PUBLIC Upload Files gallery.
-    private void showImageInputs() {
-        if (web == null) return;
+    // Reference pictures belong in the generator's model-specific inputs.
+    // Deliberately do not click the website's PUBLIC Upload Files feature.
+    private void showReferencePhotoHelp() {
+        new AlertDialog.Builder(this)
+            .setTitle("Upload photo for image editing")
+            .setMessage("Important: The popup 'Upload AI Images & Videos' is PUBLIC, " +
+                "not a private reference upload. Close it using X.\n\n" +
+                "1. On the generator page, open model selection.\n" +
+                "2. Choose Qwen Edit or an image-guided model.\n" +
+                "3. Open Show more options / settings.\n" +
+                "4. Tap Qwen Edit Image Input > Primary Image (Required), " +
+                "or the Controlnet++ image-input control.\n" +
+                "5. Choose your image using the Android Files or Photos picker.\n\n" +
+                "This app handles website file-upload requests; it cannot " +
+                "substitute a photo directly into another website field.")
+            .setPositiveButton("Highlight reference input", (dialog, which) -> highlightReferenceInput())
+            .setNeutralButton("Open in Chrome", (dialog, which) ->
+                external(Uri.parse(web.getUrl()==null?HOME:web.getUrl())))
+            .setNegativeButton("Close", null)
+            .show();
+    }
+
+    private void highlightReferenceInput() {
+        // Search only within sections labelled for model-reference uploads.
+        // No synthetic upload or automatic public publication is performed.
         String script = "(function(){" +
-            "var a=Array.from(document.querySelectorAll('input[type=file]'));" +
-            "var result=[];" +
-            "for(var i=0;i<a.length;i++){" +
-            "var n=a[i],t=((n.id||'')+' '+(n.name||'')+' '+(n.getAttribute('aria-label')||''));" +
-            "for(var p=n.parentElement,d=0;p&&d<4;d++,p=p.parentElement){" +
-            "var x=(p.innerText||'').trim();" +
-            "if(x.length>0 && x.length<380){t+=' '+x;}}" +
-            "if(/qwen|flux kontext|controlnet|wan.{0,12}i2v|ltx.{0,12}i2v|primary image|starting frame|reference image/i.test(t)" +
-            " && !/publicly visible|not a private upload|upload ai images & videos|profile avatar/i.test(t)){" +
-            "result.push({index:i,label:(t.replace(/\\\\s+/g,' ').slice(0,85))});}}" +
-            "return JSON.stringify(result);})()";
-        web.evaluateJavascript(script, response -> {
-            try {
-                // evaluateJavascript returns a JSON-encoded JavaScript string.
-                Object parsed = new JSONTokener(response).nextValue();
-                JSONArray candidates = new JSONArray(String.valueOf(parsed));
-                if (candidates.length() == 0) {
-                    new AlertDialog.Builder(this)
-                        .setTitle("Image upload")
-                        .setMessage("Select Qwen Edit, ControlNet++ or an image-to-video model " +
-                            "on the website, then tap its image input. The Android photo picker should appear.")
-                        .setPositiveButton("OK", null)
-                        .setNeutralButton("Open in Chrome", (d,w) ->
-                            external(Uri.parse(web.getUrl()==null?HOME:web.getUrl())))
-                        .show();
-                    return;
-                }
-                String[] labels = new String[candidates.length()];
-                int[] indices = new int[candidates.length()];
-                for (int i = 0; i < candidates.length(); i++) {
-                    indices[i] = candidates.getJSONObject(i).getInt("index");
-                    String text = candidates.getJSONObject(i).optString("label");
-                    labels[i] = "Image input " + (i+1) + ": " + text;
-                }
-                new AlertDialog.Builder(this)
-                    .setTitle("Choose image input")
-                    .setItems(labels, (dialog, which) -> {
-                        // WebView's onShowFileChooser opens Android's Documents photo picker.
-                        web.evaluateJavascript("(function(){var input=document.querySelectorAll('input[type=file]')[" +
-                            indices[which] + "];if(input)input.click();})()", null);
-                    }).setNegativeButton("Cancel", null).show();
-            } catch (Exception ex) {
-                Toast.makeText(this, "Tap the website image input to upload.", Toast.LENGTH_LONG).show();
+            "var inputs=document.querySelectorAll('input[type=file]');" +
+            "for(var i=0;i<inputs.length;i++){" +
+            "var node=inputs[i],ctx='';" +
+            "for(var p=node,k=0;p&&k<5;k++,p=p.parentElement){" +
+            "var s=(p.innerText||'').trim();" +
+            "if(s.length>0&&s.length<450)ctx+=' '+s;" +
+            "}" +
+            "if(/qwen edit image input|primary image|required|controlnet\\+\\+|flux kontext image input/i.test(ctx)" +
+            "&&!/this is not a private upload|upload ai images & videos|publicly visible/i.test(ctx)){" +
+            "var target=node;while(target&&target.getBoundingClientRect().height<8)target=target.parentElement;" +
+            "if(!target)target=node.parentElement;" +
+            "if(target){target.scrollIntoView({block:'center',behavior:'smooth'});" +
+            "target.style.outline='3px solid #65c7ff';}" +
+            "return 'found';" +
+            "}" +
+            "}" +
+            "return 'missing';" +
+            "})()";
+        web.evaluateJavascript(script, value -> {
+            if ("\"found\"".equals(value)) {
+                Toast.makeText(this,
+                    "Tap the highlighted reference image field to pick a photo.",
+                    Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this,
+                    "Select Qwen Edit and open its image-input settings first.",
+                    Toast.LENGTH_LONG).show();
             }
         });
     }
