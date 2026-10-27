@@ -7,6 +7,18 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.view.PixelCopy;
+import android.content.ContentValues;
+import android.provider.MediaStore;
+import android.os.Handler;
+import android.os.Looper;
+import android.app.AlertDialog;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import org.json.JSONTokener;
 import android.view.View;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -37,7 +49,7 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setBackgroundColor(Color.rgb(31,42,60));
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        for (String name : new String[]{"Back","Refresh","Browser"}) {
+        for (String name : new String[]{"Back","Save Image","Refresh","Browser"}) {
             Button b = new Button(this);
             b.setText(name);
             b.setTextSize(12);
@@ -46,6 +58,7 @@ public class MainActivity extends Activity {
             if (name.equals("Back")) b.setOnClickListener(v -> {
                 if (web.canGoBack()) web.goBack(); else web.loadUrl(HOME);
             });
+            if (name.equals("Save Image")) b.setOnClickListener(v -> saveLargestOrScreenshot());
             if (name.equals("Refresh")) b.setOnClickListener(v -> web.reload());
             if (name.equals("Browser")) b.setOnClickListener(v ->
                 external(Uri.parse(web.getUrl()==null?HOME:web.getUrl())));
@@ -125,8 +138,130 @@ public class MainActivity extends Activity {
                 Toast.makeText(this,"Download failed; try Browser",Toast.LENGTH_LONG).show();
             }
         });
+        web.setOnLongClickListener(view -> {
+            WebView.HitTestResult result = web.getHitTestResult();
+            if (result == null) return false;
+            int kind = result.getType();
+            if (kind != WebView.HitTestResult.IMAGE_TYPE &&
+                kind != WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) return false;
+            String src = result.getExtra();
+            new AlertDialog.Builder(this)
+                .setTitle("Save generated image")
+                .setItems(new String[]{"Save original if available", "Save visible screen"}, (dialog, which) -> {
+                    if (which == 0 && src != null && src.startsWith("https://")) {
+                        downloadOriginal(src);
+                    } else {
+                        saveScreenshot();
+                    }
+                }).show();
+            return true;
+        });
         if(saved==null) web.loadUrl(HOME); else web.restoreState(saved);
     }
+
+    // Save the largest displayed HTML image when it has a permanent URL.
+    // For canvas, blob: images, and other renderers, capture the visible WebView.
+    private void saveLargestOrScreenshot() {
+        String script = "(function(){var a=document.querySelectorAll('img'),winner='',area=0;" +
+            "for(var i=0;i<a.length;i++){var im=a[i],r=im.getBoundingClientRect();" +
+            "var z=r.width*r.height;if(im.complete&&im.naturalWidth>=256&&r.width>=180&&" +
+            "r.height>=180&&r.bottom>0&&r.top<innerHeight&&z>area){" +
+            "area=z;winner=im.currentSrc||im.src;}}" +
+            "return winner;})()";
+        web.evaluateJavascript(script, value -> {
+            try {
+                Object decoded = new JSONTokener(value).nextValue();
+                if (decoded instanceof String && ((String) decoded).startsWith("https://")) {
+                    downloadOriginal((String) decoded);
+                    return;
+                }
+            } catch (Exception ignored) {}
+            Toast.makeText(this, "Saving visible screen to Gallery", Toast.LENGTH_SHORT).show();
+            saveScreenshot();
+        });
+    }
+
+    private void downloadOriginal(String url) {
+        try {
+            String file = URLUtil.guessFileName(url, null, null);
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            request.setTitle(file);
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.addRequestHeader("User-Agent", web.getSettings().getUserAgentString());
+            String cookie = CookieManager.getInstance().getCookie(url);
+            if (cookie != null) request.addRequestHeader("Cookie", cookie);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, file);
+            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            if (manager == null) throw new Exception("Download service unavailable");
+            manager.enqueue(request);
+            Toast.makeText(this, "Original image download started", Toast.LENGTH_LONG).show();
+        } catch (Exception err) {
+            Toast.makeText(this, "Original unavailable: saving screen instead", Toast.LENGTH_LONG).show();
+            saveScreenshot();
+        }
+    }
+
+    private void saveScreenshot() {
+        if (web == null || web.getWidth() == 0 || web.getHeight() == 0) {
+            Toast.makeText(this, "Please open the image first", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Bitmap bitmap;
+        try {
+            bitmap = Bitmap.createBitmap(web.getWidth(), web.getHeight(), Bitmap.Config.ARGB_8888);
+        } catch (Exception ex) {
+            Toast.makeText(this, "Insufficient memory", Toast.LENGTH_LONG).show();
+            return;
+        }
+        int[] position = new int[2];
+        web.getLocationInWindow(position);
+        Rect rect = new Rect(position[0], position[1],
+            position[0] + web.getWidth(), position[1] + web.getHeight());
+        try {
+            PixelCopy.request(getWindow(), rect, bitmap, result -> {
+                try {
+                    if (result != PixelCopy.SUCCESS) web.draw(new Canvas(bitmap));
+                    saveBitmapToGallery(bitmap);
+                } catch (Exception ex) {
+                    Toast.makeText(this, "Could not save screenshot", Toast.LENGTH_LONG).show();
+                } finally { bitmap.recycle(); }
+            }, new Handler(Looper.getMainLooper()));
+        } catch (Exception e) {
+            try {
+                web.draw(new Canvas(bitmap));
+                saveBitmapToGallery(bitmap);
+            } catch (Exception ex) {
+                Toast.makeText(this, "Could not save screenshot", Toast.LENGTH_LONG).show();
+            } finally { bitmap.recycle(); }
+        }
+    }
+
+    private void saveBitmapToGallery(Bitmap bitmap) throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            throw new Exception("PNG conversion failed");
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME, "AI_Image_" + System.currentTimeMillis() + ".png");
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+        values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AI Web Access");
+        values.put(MediaStore.Images.Media.IS_PENDING, 1);
+        Uri destination = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        if (destination == null) throw new Exception("Cannot create image");
+        try {
+            try (OutputStream stream = getContentResolver().openOutputStream(destination)) {
+                if (stream == null) throw new Exception("Cannot open image");
+                stream.write(output.toByteArray());
+            }
+            ContentValues done = new ContentValues();
+            done.put(MediaStore.Images.Media.IS_PENDING, 0);
+            getContentResolver().update(destination, done, null, null);
+            Toast.makeText(this, "Saved to Gallery > Pictures > AI Web Access", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            getContentResolver().delete(destination, null, null);
+            throw e;
+        }
+    }
+
     private int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+0.5f);}
     private void external(Uri u){
         try{startActivity(new Intent(Intent.ACTION_VIEW,u));}

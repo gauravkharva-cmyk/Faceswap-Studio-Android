@@ -11,3 +11,7 @@ Never create nonconsensual sexual deepfakes of identifiable real people or sexua
 ## Build locally
 Open this standalone branch as an Android Studio project, with Android SDK 35 and JDK 17. Run 'assembleDebug'.
 The APK is debug-signed for personal use, not store distribution.
+
+
+## Version 1.1.0
+Adds Save Image in the toolbar. It prefers the largest visible direct HTTPS image; otherwise saves a screenshot of the visible website to Android Gallery > Pictures > AI Web Access. Long press an image to choose original download or visible screenshot. Image downloads go to Downloads. Canvas/blob images use screenshot fallback. No storage permission needed on Android 10+. If the older app has a different debug signing certificate, uninstall v1.0 before installing v1.1 (this clears the app's website session).
