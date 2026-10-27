@@ -28,18 +28,18 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: AI-Web-Access-APK-v1.1
+          name: AI-Web-Access-APK-v1.2
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - name: Publish direct APK download on GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=stuffer-web-access-v1.1.0
-          cp app/build/outputs/apk/debug/app-debug.apk AI-Web-Access-for-Stuffer-v1.1.0.apk
-          FILE=AI-Web-Access-for-Stuffer-v1.1.0.apk
+          TAG=stuffer-web-access-v1.2.0
+          cp app/build/outputs/apk/debug/app-debug.apk AI-Web-Access-for-Stuffer-v1.2.0.apk
+          FILE=AI-Web-Access-for-Stuffer-v1.2.0.apk
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$FILE" --clobber
           else
-            gh release create "$TAG" "$FILE" --title "AI Web Access for Stuffer v1.1.0 – Save Image" --notes "Independent, unofficial Android WebView wrapper for https://stuffer.ai/. Adds Save Image button, Gallery saving, and original-image downloads when available. Requires internet. Unofficial debug-signed APK." --target "$GITHUB_SHA" --latest=false
+            gh release create "$TAG" "$FILE" --title "AI Web Access for Stuffer v1.2.0 – Photo upload" --notes "Independent, unofficial Android WebView wrapper for https://stuffer.ai/. Adds native Android photo picker for image upload, Upload Photo toolbar button, and save image. Requires internet. Unofficial debug-signed APK." --target "$GITHUB_SHA" --latest=false
           fi

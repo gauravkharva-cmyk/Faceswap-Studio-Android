@@ -3,6 +3,10 @@ package com.example.stufferwebaccess;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.Intent;
+import android.content.ClipData;
+import org.json.JSONArray;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -49,15 +53,16 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setBackgroundColor(Color.rgb(31,42,60));
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        for (String name : new String[]{"Back","Save Image","Refresh","Browser"}) {
+        for (String name : new String[]{"Back","Upload Photo","Save Image","Refresh","Browser"}) {
             Button b = new Button(this);
             b.setText(name);
-            b.setTextSize(12);
+            b.setTextSize(10);
             b.setAllCaps(false);
             bar.addView(b, new LinearLayout.LayoutParams(0, dp(48), 1f));
             if (name.equals("Back")) b.setOnClickListener(v -> {
                 if (web.canGoBack()) web.goBack(); else web.loadUrl(HOME);
             });
+            if (name.equals("Upload Photo")) b.setOnClickListener(v -> showImageInputs());
             if (name.equals("Save Image")) b.setOnClickListener(v -> saveLargestOrScreenshot());
             if (name.equals("Refresh")) b.setOnClickListener(v -> web.reload());
             if (name.equals("Browser")) b.setOnClickListener(v ->
@@ -103,15 +108,39 @@ public class MainActivity extends Activity {
                 progress.setVisibility(value<100?View.VISIBLE:View.GONE);
             }
             @Override public boolean onShowFileChooser(WebView view,ValueCallback<Uri[]> callback,FileChooserParams parameters) {
-                if (files!=null) files.onReceiveValue(null);
-                files=callback;
+                if (files != null) files.onReceiveValue(null);
+                files = callback;
                 try {
-                    Intent intent=parameters.createIntent();
-                    startActivityForResult(intent,PICK);
+                    String[] requested = parameters.getAcceptTypes();
+                    ArrayList<String> types = new ArrayList<>();
+                    if (requested != null) {
+                        for (String item : requested) {
+                            if (item == null) continue;
+                            for (String value : item.split(",")) {
+                                value = value.trim();
+                                if (!value.isEmpty() && !value.equals("*/*")) types.add(value);
+                            }
+                        }
+                    }
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    String mimeType = "image/*";
+                    if (types.size() == 1) mimeType = types.get(0);
+                    else if (types.size() > 1) {
+                        mimeType = "*/*";
+                        intent.putExtra(Intent.EXTRA_MIME_TYPES, types.toArray(new String[0]));
+                    }
+                    intent.setType(mimeType);
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
+                        parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(intent, PICK);
                     return true;
                 } catch (Exception ex) {
-                    files=null;
-                    Toast.makeText(MainActivity.this,"File picker unavailable",Toast.LENGTH_LONG).show();
+                    files = null;
+                    Toast.makeText(MainActivity.this,
+                        "Android file picker unavailable; open this page in Chrome.",
+                        Toast.LENGTH_LONG).show();
                     return false;
                 }
             }
@@ -157,6 +186,59 @@ public class MainActivity extends Activity {
             return true;
         });
         if(saved==null) web.loadUrl(HOME); else web.restoreState(saved);
+    }
+
+
+    // User-initiated convenience control. Only finds image-input controls for
+    // generation/editing, never the site's PUBLIC Upload Files gallery.
+    private void showImageInputs() {
+        if (web == null) return;
+        String script = "(function(){" +
+            "var a=Array.from(document.querySelectorAll('input[type=file]'));" +
+            "var result=[];" +
+            "for(var i=0;i<a.length;i++){" +
+            "var n=a[i],t=((n.id||'')+' '+(n.name||'')+' '+(n.getAttribute('aria-label')||''));" +
+            "for(var p=n.parentElement,d=0;p&&d<4;d++,p=p.parentElement){" +
+            "var x=(p.innerText||'').trim();" +
+            "if(x.length>0 && x.length<380){t+=' '+x;}}" +
+            "if(/qwen|flux kontext|controlnet|wan.{0,12}i2v|ltx.{0,12}i2v|primary image|starting frame|reference image/i.test(t)" +
+            " && !/publicly visible|not a private upload|upload ai images & videos|profile avatar/i.test(t)){" +
+            "result.push({index:i,label:(t.replace(/\\\\s+/g,' ').slice(0,85))});}}" +
+            "return JSON.stringify(result);})()";
+        web.evaluateJavascript(script, response -> {
+            try {
+                // evaluateJavascript returns a JSON-encoded JavaScript string.
+                Object parsed = new JSONTokener(response).nextValue();
+                JSONArray candidates = new JSONArray(String.valueOf(parsed));
+                if (candidates.length() == 0) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("Image upload")
+                        .setMessage("Select Qwen Edit, ControlNet++ or an image-to-video model " +
+                            "on the website, then tap its image input. The Android photo picker should appear.")
+                        .setPositiveButton("OK", null)
+                        .setNeutralButton("Open in Chrome", (d,w) ->
+                            external(Uri.parse(web.getUrl()==null?HOME:web.getUrl())))
+                        .show();
+                    return;
+                }
+                String[] labels = new String[candidates.length()];
+                int[] indices = new int[candidates.length()];
+                for (int i = 0; i < candidates.length(); i++) {
+                    indices[i] = candidates.getJSONObject(i).getInt("index");
+                    String text = candidates.getJSONObject(i).optString("label");
+                    labels[i] = "Image input " + (i+1) + ": " + text;
+                }
+                new AlertDialog.Builder(this)
+                    .setTitle("Choose image input")
+                    .setItems(labels, (dialog, which) -> {
+                        // WebView's onShowFileChooser opens Android's Documents photo picker.
+                        web.evaluateJavascript("(function(){var input=document.querySelectorAll('input[type=file]')[" +
+                            indices[which] + "];if(input)input.click();})()", null);
+                    }).setNegativeButton("Cancel", null).show();
+            } catch (Exception ex) {
+                Toast.makeText(this, "Tap the website image input to upload.", Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     // Save the largest displayed HTML image when it has a permanent URL.
@@ -269,9 +351,24 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int code,int result,Intent data){
         super.onActivityResult(code,result,data);
-        if(code==PICK && files!=null){
-            files.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result,data));
-            files=null;
+        if (code == PICK && files != null) {
+            Uri[] selected = null;
+            if (result == RESULT_OK && data != null) {
+                LinkedHashSet<Uri> chosen = new LinkedHashSet<>();
+                if (data.getData() != null) chosen.add(data.getData());
+                ClipData clip = data.getClipData();
+                if (clip != null) {
+                    for (int i = 0; i < clip.getItemCount(); i++) {
+                        Uri item = clip.getItemAt(i).getUri();
+                        if (item != null) chosen.add(item);
+                    }
+                }
+                if (!chosen.isEmpty()) selected = chosen.toArray(new Uri[0]);
+            }
+            files.onReceiveValue(selected);
+            files = null;
+            if (selected != null) Toast.makeText(this,
+                "Photo selected. Check Stuffer AI image input.", Toast.LENGTH_LONG).show();
         }
     }
     @Override protected void onSaveInstanceState(Bundle out){
