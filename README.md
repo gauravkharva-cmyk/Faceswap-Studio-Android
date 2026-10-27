@@ -1,17 +1,13 @@
-# FaceSwap Studio
+# AI Web Access for Stuffer (unofficial)
+Independent Android WebView wrapper for https://stuffer.ai/. Not affiliated with or endorsed by the website.
 
-FaceSwap Studio is an Android photo face-swap app focused on private, on-device processing.
+Open app to access the online service. The app needs internet access and does not run AI models itself.
+Buttons: Back, Refresh, Browser. Android file upload and standard HTTPS downloads supported.
+If a download uses a blob URL, use the Browser button.
+Built through GitHub Actions; download AI-Web-Access-APK from the Actions run's Artifacts section.
+Only use this 18+ website in compliance with its policies at https://stuffer.ai/terms
+Never create nonconsensual sexual deepfakes of identifiable real people or sexualized content involving minors.
 
-## Version 1.1 improvements
-
-- Better face alignment using eyes, nose, and mouth anchors
-- Skin tone / color matching before blending
-- Softer face contour masking for smoother edges
-- Basic quality checks to reject poor source/target photo pairs
-- PNG export with visible "AI EDITED • FACE SWAP" watermark
-
-## Best results
-
-Use two front-facing portraits with similar lighting, head angle, and face size. Results may still look unnatural for very different ages, poses, or extreme lighting changes because this app uses local image-domain blending rather than a cloud generative deepfake model.
-
-Developed By : Gaurav Kharva
+## Build locally
+Open this standalone branch as an Android Studio project, with Android SDK 35 and JDK 17. Run 'assembleDebug'.
+The APK is debug-signed for personal use, not store distribution.
