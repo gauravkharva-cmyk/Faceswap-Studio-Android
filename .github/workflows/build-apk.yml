@@ -4,7 +4,7 @@ on:
     branches: [stuffer-web-access]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,3 +31,14 @@ jobs:
           name: AI-Web-Access-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Publish direct APK download on GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=stuffer-web-access-v1.0.0
+          FILE=app/build/outputs/apk/debug/app-debug.apk
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE#AI-Web-Access-for-Stuffer.apk" --clobber
+          else
+            gh release create "$TAG" "$FILE#AI-Web-Access-for-Stuffer.apk" --title "AI Web Access for Stuffer v1.0.0" --notes "Independent, unofficial Android WebView wrapper for https://stuffer.ai/. Requires internet access. Debug-signed build for personal installation." --target "$GITHUB_SHA" --latest=false
+          fi
