@@ -270,6 +270,7 @@ public final class MainActivity extends Activity {
         status.setText("Testing private server...");
         startTask(() -> {
             HttpURLConnection connection = (HttpURLConnection)new URL(url).openConnection();
+            connection.setInstanceFollowRedirects(false);
             try {
                 connection.setConnectTimeout(12000);
                 connection.setReadTimeout(20000);
@@ -294,6 +295,7 @@ public final class MainActivity extends Activity {
         startTask(() -> {
             String boundary = "GK" + Long.toHexString(System.nanoTime());
             HttpURLConnection conn = (HttpURLConnection)new URL(url).openConnection();
+            conn.setInstanceFollowRedirects(false);
             try {
                 conn.setRequestMethod("POST");
                 conn.setDoOutput(true);
