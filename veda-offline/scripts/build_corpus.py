@@ -75,7 +75,7 @@ def samaveda_rows():
     content=download(url,CACHE/'sv-kauthuma.html').decode('utf-8','replace')
     parser=GetPre();parser.feed(content)
     data='\n'.join(parser.data) if parser.data else re.sub(r'<[^>]*>','',content)
-    seq={};parts=[]
+    seq={};parts=[];misnumbered=[]
     for line in html.unescape(data).splitlines():
         match=SAMA_LINE.match(line)
         if not match: continue
@@ -83,11 +83,15 @@ def samaveda_rows():
         parts.append(fragment)
         done=SAMA_END.search(fragment)
         if done:
-            n=digits(done.group(1))
-            if n in seq: raise ValueError('Duplicate Samaveda verse '+str(n))
+            source_label=digits(done.group(1))
+            n=len(seq)+1
+            if source_label!=n: misnumbered.append((n,source_label))
             seq[n]='\n'.join(parts).strip();parts=[]
+    print('Samaveda source numbering discrepancies:',misnumbered[:20],flush=True)
     missing=sorted(set(range(1,1876))-set(seq))
-    if missing:raise ValueError('Samaveda missing verses: '+str(missing[:25]))
+    if len(seq)!=1875 or missing:
+        raise ValueError('Samaveda verse count mismatch: '+str(len(seq))+
+                         ' missing: '+str(missing[:25]))
     for n in range(1,1876):
         name=('पूर्वार्चिक' if n<=585 else 'आरण्य आर्चिक' if n<=640 else 'महानाम्नी' if n<=650 else 'उत्तरार्चिक')
         yield ('sama',f'SV-{n}',f'सामवेद {devan(n)}',name,
