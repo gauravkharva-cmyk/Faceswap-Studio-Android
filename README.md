@@ -30,3 +30,7 @@ Limitations: website-specific WebView incompatibilities may persist; if you cann
 - Reference Photo explains the correct workflow (Qwen Edit > Primary Image Required or Controlnet++ reference input) and can highlight the page's reference input when present. This control never opens or submits the public upload gallery.
 - Android's system document/photo picker handles upload callback for the site's original reference file fields.
 - This is a general purpose website wrapper; site rendering quirks or restrictions may still affect reference image uploads.
+
+
+## Version 1.4
+The two-row toolbar keeps buttons usable on phones/tablets. Stop Page stops webpage loading but not remote generation. Recover recreates the WebView after confirmation, warns about unsaved input, and reopens the homepage. A renderer crash is handled by releasing the dead WebView and offering a fresh page. An unresponsive renderer gets a recovery dialog without auto-retry. Saving images, Android photo picker, and reference photo guidance remain available. Server overload cannot be bypassed.

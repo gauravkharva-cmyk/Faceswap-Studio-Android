@@ -26,6 +26,10 @@ import org.json.JSONTokener;
 import android.view.View;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebViewRenderProcess;
+import android.webkit.WebViewRenderProcessClient;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
@@ -45,38 +49,83 @@ public class MainActivity extends Activity {
     private WebView web;
     private ValueCallback<Uri[]> files;
     private ProgressBar progress;
+    private FrameLayout pageFrame;
+    private boolean rendererWarning = false;
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout bar = new LinearLayout(this);
-        bar.setBackgroundColor(Color.rgb(31,42,60));
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        for (String name : new String[]{"Back","Reference Photo","Save Image","Refresh","Browser"}) {
-            Button b = new Button(this);
-            b.setText(name);
-            b.setTextSize(10);
-            b.setAllCaps(false);
-            bar.addView(b, new LinearLayout.LayoutParams(0, dp(48), 1f));
-            if (name.equals("Back")) b.setOnClickListener(v -> {
-                if (web.canGoBack()) web.goBack(); else web.loadUrl(HOME);
-            });
-            if (name.equals("Reference Photo")) b.setOnClickListener(v -> showReferencePhotoHelp());
-            if (name.equals("Save Image")) b.setOnClickListener(v -> saveLargestOrScreenshot());
-            if (name.equals("Refresh")) b.setOnClickListener(v -> web.reload());
-            if (name.equals("Browser")) b.setOnClickListener(v ->
-                external(Uri.parse(web.getUrl()==null?HOME:web.getUrl())));
-        }
-        body.addView(bar, new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.VERTICAL);
+        toolbar.setBackgroundColor(Color.rgb(31,42,60));
+        LinearLayout firstRow = new LinearLayout(this);
+        LinearLayout secondRow = new LinearLayout(this);
+        toolbar.addView(firstRow, new LinearLayout.LayoutParams(-1, dp(44)));
+        toolbar.addView(secondRow, new LinearLayout.LayoutParams(-1, dp(44)));
+        addAction(firstRow, "Back", () -> {
+            if (web != null && web.canGoBack()) web.goBack();
+            else if (web != null) web.loadUrl(HOME);
+        });
+        addAction(firstRow, "Reference Photo", () -> showReferencePhotoHelp());
+        addAction(firstRow, "Save Image", () -> saveLargestOrScreenshot());
+        addAction(secondRow, "Stop Page", () -> {
+            if (web != null) web.stopLoading();
+            Toast.makeText(this, "Page loading stopped. Server jobs may continue.", Toast.LENGTH_LONG).show();
+        });
+        addAction(secondRow, "Recover", () -> confirmRecover());
+        addAction(secondRow, "Browser", () ->
+            external(Uri.parse(web == null || web.getUrl() == null ? HOME : web.getUrl())));
+        body.addView(toolbar, new LinearLayout.LayoutParams(-1,-2));
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         progress.setVisibility(View.GONE);
         body.addView(progress, new LinearLayout.LayoutParams(-1,dp(3)));
-        web = new WebView(this);
-        body.addView(web,new LinearLayout.LayoutParams(-1,0,1f));
+        pageFrame = new FrameLayout(this);
+        body.addView(pageFrame, new LinearLayout.LayoutParams(-1, 0, 1f));
         setContentView(body);
+        createWebView();
+        if (saved == null) web.loadUrl(HOME); else web.restoreState(saved);
+    }
 
+
+    private void addAction(LinearLayout row, String label, Runnable callback) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(12);
+        b.setAllCaps(false);
+        row.addView(b, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        b.setOnClickListener(v -> callback.run());
+    }
+    private void confirmRecover() {
+        new AlertDialog.Builder(this).setTitle("Recover frozen page?")
+            .setMessage("Recover reopens the Stuffer website and may lose unsaved prompts " +
+                "and uploaded selections. It cannot cancel a server job or bypass overload.")
+            .setPositiveButton("Recover", (d, w) -> recoverWebView())
+            .setNeutralButton("Chrome", (d, w) -> external(Uri.parse(HOME)))
+            .setNegativeButton("Cancel", null).show();
+    }
+    private void releaseWebView(WebView old) {
+        if (old == null) return;
+        try {
+            ViewGroup container = (ViewGroup) old.getParent();
+            if (container != null) container.removeView(old);
+            old.destroy();
+        } catch (Exception ignored) {}
+    }
+    private void recoverWebView() {
+        if (files != null) { files.onReceiveValue(null); files = null; }
+        WebView old = web;
+        web = null;
+        releaseWebView(old);
+        rendererWarning = false;
+        createWebView();
+        web.loadUrl(HOME);
+        Toast.makeText(this, "Stuffer reopened. Check Chrome if overload continues.", Toast.LENGTH_LONG).show();
+    }
+    private void createWebView() {
+        web = new WebView(this);
+        pageFrame.addView(web, new FrameLayout.LayoutParams(-1,-1));
         WebSettings config = web.getSettings();
         config.setJavaScriptEnabled(true);
         config.setDomStorageEnabled(true);
@@ -89,6 +138,22 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web,true);
 
         web.setWebViewClient(new WebViewClient() {
+            @Override public boolean onRenderProcessGone(WebView dead, RenderProcessGoneDetail detail) {
+                if (files != null) { files.onReceiveValue(null); files = null; }
+                releaseWebView(dead);
+                if (web == dead) web = null;
+                rendererWarning = false;
+                createWebView();
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("Webpage renderer stopped")
+                    .setMessage("Stuffer's webpage stopped or ran out of resources. " +
+                        "You can reload the homepage or open Chrome. " +
+                        "This cannot resolve Stuffer server overload.")
+                    .setPositiveButton("Reload homepage", (d, w) -> web.loadUrl(HOME))
+                    .setNeutralButton("Chrome", (d, w) -> external(Uri.parse(HOME)))
+                    .setNegativeButton("Close", null).show();
+                return true;
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
                 if (!req.isForMainFrame()) return false;
                 Uri u=req.getUrl();
@@ -185,9 +250,24 @@ public class MainActivity extends Activity {
                 }).show();
             return true;
         });
-        if(saved==null) web.loadUrl(HOME); else web.restoreState(saved);
+        web.setWebViewRenderProcessClient(getMainExecutor(),
+            new WebViewRenderProcessClient() {
+                @Override public void onRenderProcessUnresponsive(WebView affected, WebViewRenderProcess process) {
+                    if (affected != web || rendererWarning || isFinishing()) return;
+                    rendererWarning = true;
+                    new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Webpage not responding")
+                        .setMessage("The embedded browser is busy or frozen. " +
+                            "Recover restarts only the webpage; it cannot repair overloaded AI servers.")
+                        .setPositiveButton("Recover", (d, w) -> recoverWebView())
+                        .setNeutralButton("Chrome", (d, w) -> external(Uri.parse(HOME)))
+                        .setNegativeButton("Keep waiting", null).show();
+                }
+                @Override public void onRenderProcessResponsive(WebView affected, WebViewRenderProcess process) {
+                    if (affected == web) rendererWarning = false;
+                }
+            });
     }
-
 
     // Reference pictures belong in the generator's model-specific inputs.
     // Deliberately do not click the website's PUBLIC Upload Files feature.
