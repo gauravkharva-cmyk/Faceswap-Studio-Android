@@ -83,6 +83,8 @@ def samaveda_rows():
         done=SAMA_END.search(line)
         if not match and not done: continue
         fragment=(match.group(1) if match else line.strip()).strip()
+        # Printed source has a corrupted numeral after mantra 1211; text is intact.
+        fragment=fragment.replace('॥ १२१च्ल्स्दिर्','॥ १२११')
         parts.append(fragment)
         done=SAMA_END.search(fragment)
         if done:
