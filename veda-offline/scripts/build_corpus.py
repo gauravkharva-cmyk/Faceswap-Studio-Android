@@ -22,7 +22,7 @@ DEV_TRANS=str.maketrans('0123456789','०१२३४५६७८९')
 ASCII_TRANS=str.maketrans('०१२३४५६७८९','0123456789')
 END=re.compile(r'(?:॥|।।)\s*([०-९0-9]{1,4})\s*(?:॥|।।)')
 SAMA_END=re.compile(r'॥\s*([०-९0-9]{1,4})\s*$')
-SAMA_LINE=re.compile(r'^.*?[०-९0-9]{2,}[a-z]\s+(.+)
+SAMA_LINE=re.compile(r'^.*?[०-९0-9]{2,}[a-z]\s+(.+)$')
 
 def devan(num): return str(num).translate(DEV_TRANS)
 def digits(s): return int(s.translate(ASCII_TRANS))
