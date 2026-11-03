@@ -1,0 +1,56 @@
+name: Build GK Veda Gyan Complete Sanskrit Offline APK
+on:
+  push:
+    branches: [gk-veda-offline-complete-text]
+    paths:
+      - 'veda-offline/**'
+      - '.github/workflows/veda-offline-apk.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install Android SDK
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Prepare entire local Sanskrit corpus
+        run: |
+          cd veda-offline
+          python3 scripts/build_corpus.py | tee corpus-build.log
+          python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('app/src/main/assets/corpus.db')
+          rows=con.execute('SELECT veda,count(*) FROM verse GROUP BY veda').fetchall()
+          print('OFFLINE CORPUS COUNTS:',rows)
+          assert len(rows)==4
+          assert sum(n for v,n in rows)>19000
+          print('SQLITE INTEGRITY:',con.execute('PRAGMA integrity_check').fetchone())
+          PY
+      - name: Build genuine Android debug APK
+        run: gradle -p veda-offline --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify APK and absence of Internet permission
+        run: |
+          APK=veda-offline/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee /tmp/apk-permissions.txt
+          if grep -q "android.permission.INTERNET" /tmp/apk-permissions.txt; then exit 1; fi
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -14
+          ls -lh "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GK-Veda-Gyan-Four-Vedas-Offline-APK
+          path: |
+            veda-offline/app/build/outputs/apk/debug/app-debug.apk
+            veda-offline/corpus-build.log
+          if-no-files-found: error
+          retention-days: 30
